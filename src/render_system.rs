@@ -22,15 +22,14 @@ pub const OPENGL_TO_WGPU_MATRIX: cgmath::Matrix4<f32> = cgmath::Matrix4::new(
     0.0, 0.0, 0.5, 1.0,
 );
 
-const NUM_INSTANCES_PER_ROW: u32 = 10;
+const NUM_INSTANCES_PER_ROW: u32 = 3;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 struct LightUniform {
     position: [f32; 3],
     _padding: u32,
-    color: [f32; 3],
-    _padding2: u32,
+    color: [f32; 4], // x,y,z - color; w - power
 }
 
 struct Camera {
@@ -298,8 +297,9 @@ struct State {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     render_pipeline: wgpu::RenderPipeline,
-    obj_model: model::Model,
+    floor_model: model::Model,
     sphere_model: model::Model,
+    tree_model: model::Model,
 
     camera: Camera,
     camera_controller: CameraController,
@@ -307,8 +307,9 @@ struct State {
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
 
-    instances: Vec<Instance>,
-    instance_buffer: wgpu::Buffer,
+    tree_instances: Vec<Instance>,
+    tree_instance_buffer: wgpu::Buffer,
+    plane_instance_buffer: wgpu::Buffer,
 
     depth_texture: texture::Texture,
     size: winit::dpi::PhysicalSize<u32>,
@@ -406,8 +407,8 @@ impl State {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
-        const SPACING: f32 = 3.0;
-        let instances = (0..NUM_INSTANCES_PER_ROW)
+        const SPACING: f32 = 4.0;
+        let tree_instances = (0..NUM_INSTANCES_PER_ROW)
             .flat_map(|y| {
                 (0..NUM_INSTANCES_PER_ROW).map(move |x| {
                     let x = SPACING * (x as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
@@ -419,15 +420,30 @@ impl State {
                             cgmath::Deg(0.0),
                         )
                     } else {
-                        cgmath::Quaternion::from_axis_angle(position.normalize(), cgmath::Deg(45.0))
+                        let angle = 22.0 * x + 45.0 * y;
+                        cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(angle))
                     };
 
                     Instance { position, rotation }
                 })
             }).collect::<Vec<_>>();
 
-        let instance_data = instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
-        let instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        let instance_data = tree_instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
+        let tree_instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Instance Buffer"),
+            contents: bytemuck::cast_slice(&instance_data),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+
+        let plane_instances = (0..1).flat_map(|_| {
+            (0..1).map(|_| {
+                let position = cgmath::Vector3::zero();
+                let rotation = cgmath::Quaternion::zero();
+                Instance { position, rotation }
+            })
+        }).collect::<Vec<_>>();
+        let instance_data = plane_instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
+        let plane_instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Instance Buffer"),
             contents: bytemuck::cast_slice(&instance_data),
             usage: wgpu::BufferUsages::VERTEX,
@@ -458,10 +474,9 @@ impl State {
         });
 
         let light_uniform = LightUniform {
-            position: [5.0, 0.0, 0.0],
+            position: [5.0, 0.0, 1.0],
             _padding: 0,
-            color: [1.0, 1.0, 1.0],
-            _padding2: 0,
+            color: [1.0, 0.75, 0.5, 8.0],
         };
         let light_buffer = device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor {
@@ -494,7 +509,7 @@ impl State {
         });
 
         log::warn!("Load model");
-        let obj_model = resources::load_model(
+        let floor_model = resources::load_model(
             "plane.obj",
             &device,
             &queue,
@@ -502,6 +517,12 @@ impl State {
         ).await.unwrap();
         let sphere_model = resources::load_model(
             "sphere.obj",
+            &device,
+            &queue,
+            &texture_bind_group_layout,
+        ).await.unwrap();
+        let tree_model = resources::load_model(
+            "tree.obj",
             &device,
             &queue,
             &texture_bind_group_layout,
@@ -559,15 +580,17 @@ impl State {
             queue,
             config,
             render_pipeline,
-            obj_model,
+            floor_model,
             sphere_model,
+            tree_model,
             camera,
             camera_controller,
             camera_buffer,
             camera_bind_group,
             camera_uniform,
-            instances,
-            instance_buffer,
+            tree_instances,
+            tree_instance_buffer,
+            plane_instance_buffer,
             depth_texture,
             size,
             light_uniform,
@@ -698,15 +721,22 @@ impl State {
                 }),
             });
 
-            render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+            render_pass.set_vertex_buffer(1, self.tree_instance_buffer.slice(..));
 
             render_pass.set_pipeline(&self.light_render_pipeline);
             render_pass.draw_light_model(&self.sphere_model, &self.camera_bind_group, &self.light_bind_group);
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.draw_model_instanced(
-                &self.sphere_model,
-                0..self.instances.len() as u32,
+                &self.tree_model,
+                0..self.tree_instances.len() as u32,
+                &self.camera_bind_group,
+                &self.light_bind_group,
+            );
+
+            render_pass.set_vertex_buffer(1, self.plane_instance_buffer.slice(..));
+            render_pass.draw_model(
+                &self.floor_model,
                 &self.camera_bind_group,
                 &self.light_bind_group,
             );

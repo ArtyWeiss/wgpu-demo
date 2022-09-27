@@ -9,7 +9,7 @@ var<uniform> camera: Camera;
 
 struct Light {
     position: vec3<f32>,
-    color: vec3<f32>,
+    color: vec4<f32>,
 }
 @group(2) @binding(0)
 var<uniform> light: Light;
@@ -69,18 +69,21 @@ var s_diffuse: sampler;
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let object_color: vec4<f32> = textureSample(t_diffuse, s_diffuse, in.tex_coords);
     // Ambient light
-    let ambient_strength = 0.1;
-    let ambient_color = light.color * ambient_strength;
+    let ambient_strength = 0.05;
+    let ambient_color = light.color.xyz * ambient_strength;
     // Direct light
-    let light_dir = normalize(light.position - in.world_position);
+    let light_v = light.position - in.world_position;
+    let light_d = length(light_v);
+    let light_falloff = light.color.w / (light_d * light_d);
+    let light_dir = normalize(light_v);
     let view_dir = normalize(camera.view_pos.xyz - in.world_position);
     let half_dir = normalize(view_dir + light_dir);
 
-    let diffuse_strength = max(dot(in.world_normal, light_dir), 0.0);
-    let diffuse_color = light.color * diffuse_strength;
+    let diffuse_strength = max(dot(in.world_normal, light_dir), 0.0) * light_falloff;
+    let diffuse_color = light.color.xyz * diffuse_strength;
 
-    let specular_strength = pow(max(dot(in.world_normal, half_dir), 0.0), 32.0);
-    let specular_color = diffuse_strength * specular_strength * light.color;
+    let specular_strength = pow(max(dot(in.world_normal, half_dir), 0.0), 32.0) * light_falloff;
+    let specular_color = diffuse_strength * specular_strength * light.color.xyz;
 
     let result = (ambient_color + diffuse_color + specular_color) * object_color.xyz;
 
