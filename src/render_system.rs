@@ -474,9 +474,9 @@ impl State {
         });
 
         let light_uniform = LightUniform {
-            position: [5.0, 0.0, 1.0],
+            position: [3.75, 0.0, 0.8],
             _padding: 0,
-            color: [1.0, 0.75, 0.5, 8.0],
+            color: [1.0, 0.5, 0.2, 10.0],
         };
         let light_buffer = device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor {
@@ -703,9 +703,9 @@ impl State {
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.05,
-                            g: 0.05,
-                            b: 0.05,
+                            r: 0.02,
+                            g: 0.02,
+                            b: 0.02,
                             a: 1.0,
                         }),
                         store: true,
