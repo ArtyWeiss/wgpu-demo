@@ -224,6 +224,7 @@ struct State {
     render_pipeline: wgpu::RenderPipeline,
     light_render_pipeline: wgpu::RenderPipeline,
     obj_model: model::Model,
+    sphere_model: model::Model,
     camera: Camera,
     camera_controller: CameraController,
     camera_uniform: CameraUniform,
@@ -389,6 +390,12 @@ impl State {
             &queue,
             &texture_bind_group_layout,
         ).await.unwrap();
+        let sphere_model = resources::load_model(
+            "sphere.obj",
+            &device,
+            &queue,
+            &texture_bind_group_layout,
+        ).await.unwrap();
 
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &config, "depth_texture");
@@ -455,6 +462,7 @@ impl State {
             render_pipeline,
             light_render_pipeline,
             obj_model,
+            sphere_model,
             camera,
             camera_controller,
             camera_buffer,
@@ -590,7 +598,7 @@ impl State {
             });
 
             render_pass.set_pipeline(&self.light_render_pipeline);
-            render_pass.draw_light_model(&self.obj_model, &self.camera_bind_group, &self.light_bind_group);
+            render_pass.draw_light_model(&self.sphere_model, &self.camera_bind_group, &self.light_bind_group);
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.draw_model(&self.obj_model, &self.camera_bind_group, &self.light_bind_group);
