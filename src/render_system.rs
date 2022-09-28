@@ -1,13 +1,13 @@
 use std::iter;
 
 use cgmath::prelude::*;
+use instant;
 use wgpu::util::DeviceExt;
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
     window::Window,
 };
-use instant;
 
 use model::{DrawLight, DrawModel, Vertex};
 
@@ -124,10 +124,6 @@ struct State {
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
-    render_pipeline: wgpu::RenderPipeline,
-    floor_model: model::Model,
-    sphere_model: model::Model,
-    tree_model: model::Model,
 
     camera: camera::Camera,
     projection: camera::Projection,
@@ -137,10 +133,6 @@ struct State {
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
 
-    tree_instances: Vec<Instance>,
-    tree_instance_buffer: wgpu::Buffer,
-    plane_instance_buffer: wgpu::Buffer,
-
     depth_texture: texture::Texture,
     size: winit::dpi::PhysicalSize<u32>,
 
@@ -149,12 +141,17 @@ struct State {
     light_buffer: wgpu::Buffer,
     light_bind_group: wgpu::BindGroup,
     light_render_pipeline: wgpu::RenderPipeline,
+
+    models: Vec<model::Model>,
+    light_source_model: model::Model,
+    instances_data: Vec<(u32, wgpu::Buffer)>,
+    render_pipeline: wgpu::RenderPipeline,
 }
 
 impl State {
     async fn new(window: &Window) -> Self {
+        // Initialize surface =============================================================================
         let size = window.inner_size();
-
         log::warn!("WGPU setup");
         let instance = wgpu::Instance::new(wgpu::Backends::all());
         let surface = unsafe { instance.create_surface(window) };
@@ -182,7 +179,6 @@ impl State {
             )
             .await
             .unwrap();
-
         log::warn!("Surface");
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -191,9 +187,11 @@ impl State {
             height: size.height,
             present_mode: wgpu::PresentMode::Fifo,
         };
-
         surface.configure(&device, &config);
 
+        let depth_texture = texture::Texture::create_depth_texture(&device, &config, "depth_texture");
+
+        // Load assets and create instances =======================================================================
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[
@@ -217,142 +215,25 @@ impl State {
                 label: Some("texture_bind_group_layout"),
             });
 
-        let camera = camera::Camera::new((0.0, -10.0, 5.0), cgmath::Rad(0.0), cgmath::Rad(0.0));
-        let projection = camera::Projection::new(config.width, config.height, cgmath::Deg(45.0), 0.1, 100.0);
-        let camera_controller = camera::CameraController::new(4.0, 0.5);
-
-        let mut camera_uniform = CameraUniform::new();
-        camera_uniform.update_view_proj(&camera, &projection);
-
-        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Camera Buffer"),
-            contents: bytemuck::cast_slice(&[camera_uniform]),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-
-        const SPACING: f32 = 4.0;
-        let tree_instances = (0..NUM_INSTANCES_PER_ROW)
-            .flat_map(|y| {
-                (0..NUM_INSTANCES_PER_ROW).map(move |x| {
-                    let x = SPACING * (x as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
-                    let y = SPACING * (y as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
-                    let position = cgmath::Vector3 { x, y, z: 0.0 };
-                    let rotation = if position.is_zero() {
-                        cgmath::Quaternion::from_axis_angle(
-                            cgmath::Vector3::unit_z(),
-                            cgmath::Deg(0.0),
-                        )
-                    } else {
-                        let angle = 22.0 * x + 45.0 * y;
-                        cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(angle))
-                    };
-
-                    Instance { position, rotation }
-                })
-            }).collect::<Vec<_>>();
-
-        let instance_data = tree_instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
-        let tree_instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Instance Buffer"),
-            contents: bytemuck::cast_slice(&instance_data),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-
-        let plane_instances = (0..1).flat_map(|_| {
-            (0..1).map(|_| {
-                let position = cgmath::Vector3::zero();
-                let rotation = cgmath::Quaternion::zero();
-                Instance { position, rotation }
-            })
-        }).collect::<Vec<_>>();
-        let instance_data = plane_instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
-        let plane_instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Instance Buffer"),
-            contents: bytemuck::cast_slice(&instance_data),
-            usage: wgpu::BufferUsages::VERTEX,
-        });
-
-        let camera_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-                label: Some("camera_bind_group_layout"),
-            });
-
-        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &camera_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: camera_buffer.as_entire_binding(),
-            }],
-            label: Some("camera_bind_group"),
-        });
-
-        let light_uniform = LightUniform {
-            position: [3.75, 0.0, 0.8],
-            _padding: 0,
-            color: [1.0, 0.5, 0.2, 10.0],
-        };
-        let light_buffer = device.create_buffer_init(
-            &wgpu::util::BufferInitDescriptor {
-                label: Some("Light VB"),
-                contents: bytemuck::cast_slice(&[light_uniform]),
-                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            }
-        );
-        let light_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-            label: None,
-        });
-
-        let light_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &light_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: light_buffer.as_entire_binding(),
-            }],
-            label: None,
-        });
-
-        log::warn!("Load model");
-        let floor_model = resources::load_model(
-            "plane.obj",
-            &device,
-            &queue,
-            &texture_bind_group_layout,
-        ).await.unwrap();
-        let sphere_model = resources::load_model(
+        let instances_data = Self::create_instances(&device);
+        let models = Self::load_models(&device, &queue, &texture_bind_group_layout).await.unwrap();
+        let light_source_model = resources::load_model(
             "sphere.obj",
             &device,
             &queue,
             &texture_bind_group_layout,
         ).await.unwrap();
-        let tree_model = resources::load_model(
-            "tree.obj",
-            &device,
-            &queue,
-            &texture_bind_group_layout,
-        ).await.unwrap();
 
-        let depth_texture = texture::Texture::create_depth_texture(&device, &config, "depth_texture");
+        // Create camera and camera data ========================================================================
+        let camera = camera::Camera::new((0.0, -10.0, 5.0), cgmath::Rad(0.0), cgmath::Rad(0.0));
+        let projection = camera::Projection::new(config.width, config.height, cgmath::Deg(45.0), 0.1, 100.0);
+        let camera_controller = camera::CameraController::new(4.0, 0.5);
+        let (camera_uniform, camera_buffer, camera_bind_group_layout, camera_bind_group) = Self::create_camera_data(&device, &camera, &projection);
 
+        // Create light data ====================================================================================
+        let (light_uniform, light_buffer, light_bind_group_layout, light_bind_group) = Self::create_light_data(&device);
+
+        // Create render pipelines ==============================================================================
         let render_pipeline = {
             let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
@@ -402,27 +283,164 @@ impl State {
             device,
             queue,
             config,
-            render_pipeline,
-            floor_model,
-            sphere_model,
-            tree_model,
+            mouse_pressed: false,
             camera,
             projection,
             camera_controller,
+            camera_uniform,
             camera_buffer,
             camera_bind_group,
-            camera_uniform,
-            tree_instances,
-            tree_instance_buffer,
-            plane_instance_buffer,
             depth_texture,
             size,
             light_uniform,
             light_buffer,
             light_bind_group,
             light_render_pipeline,
-            mouse_pressed: false,
+            models,
+            light_source_model,
+            instances_data,
+            render_pipeline,
         }
+    }
+
+    fn create_camera_data(device: &wgpu::Device, camera: &camera::Camera, projection: &camera::Projection) -> (CameraUniform, wgpu::Buffer, wgpu::BindGroupLayout, wgpu::BindGroup) {
+        let mut camera_uniform = CameraUniform::new();
+        camera_uniform.update_view_proj(&camera, &projection);
+        let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Camera Buffer"),
+            contents: bytemuck::cast_slice(&[camera_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+        let camera_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+                label: Some("camera_bind_group_layout"),
+            });
+        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &camera_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: camera_buffer.as_entire_binding(),
+            }],
+            label: Some("camera_bind_group"),
+        });
+
+        (camera_uniform, camera_buffer, camera_bind_group_layout, camera_bind_group)
+    }
+
+    fn create_light_data(device: &wgpu::Device) -> (LightUniform, wgpu::Buffer, wgpu::BindGroupLayout, wgpu::BindGroup) {
+        let light_uniform = LightUniform {
+            position: [3.75, 0.0, 0.8],
+            _padding: 0,
+            color: [1.0, 0.5, 0.2, 10.0],
+        };
+        let light_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Light VB"),
+                contents: bytemuck::cast_slice(&[light_uniform]),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            }
+        );
+        let light_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+            label: None,
+        });
+        let light_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &light_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: light_buffer.as_entire_binding(),
+            }],
+            label: None,
+        });
+
+        (light_uniform, light_buffer, light_bind_group_layout, light_bind_group)
+    }
+
+    async fn load_models(
+        device: &wgpu::Device, queue: &wgpu::Queue, texture_bind_group_layout: &wgpu::BindGroupLayout,
+    ) -> anyhow::Result<Vec<model::Model>> {
+        let floor_model = resources::load_model(
+            "plane.obj",
+            &device,
+            &queue,
+            &texture_bind_group_layout,
+        ).await.unwrap();
+        let tree_model = resources::load_model(
+            "tree.obj",
+            &device,
+            &queue,
+            &texture_bind_group_layout,
+        ).await.unwrap();
+
+        Ok(vec![floor_model, tree_model])// Must be in the same order as the instance buffers!
+    }
+
+    fn create_instances(device: &wgpu::Device) -> Vec<(u32, wgpu::Buffer)> {
+        const SPACING: f32 = 4.0;
+        let tree_instances = (0..NUM_INSTANCES_PER_ROW)
+            .flat_map(|y| {
+                (0..NUM_INSTANCES_PER_ROW).map(move |x| {
+                    let x = SPACING * (x as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
+                    let y = SPACING * (y as f32 - NUM_INSTANCES_PER_ROW as f32 / 2.0);
+                    let position = cgmath::Vector3 { x, y, z: 0.0 };
+                    let rotation = if position.is_zero() {
+                        cgmath::Quaternion::from_axis_angle(
+                            cgmath::Vector3::unit_z(),
+                            cgmath::Deg(0.0),
+                        )
+                    } else {
+                        let angle = 22.0 * x + 45.0 * y;
+                        cgmath::Quaternion::from_axis_angle(cgmath::Vector3::unit_z(), cgmath::Deg(angle))
+                    };
+
+                    Instance { position, rotation }
+                })
+            }).collect::<Vec<_>>();
+
+        let instance_data = tree_instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
+        let tree_instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Instance Buffer"),
+            contents: bytemuck::cast_slice(&instance_data),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+
+        let plane_instances = (0..1).flat_map(|_| {
+            (0..1).map(|_| {
+                let position = cgmath::Vector3::zero();
+                let rotation = cgmath::Quaternion::zero();
+                Instance { position, rotation }
+            })
+        }).collect::<Vec<_>>();
+        let instance_data = plane_instances.iter().map(Instance::to_raw).collect::<Vec<_>>();
+        let plane_instance_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Instance Buffer"),
+            contents: bytemuck::cast_slice(&instance_data),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+
+        vec!(
+            (plane_instances.len() as u32, plane_instance_buffer),
+            (tree_instances.len() as u32, tree_instance_buffer),
+        )
     }
 
     fn create_render_pipeline(
@@ -568,25 +586,20 @@ impl State {
                 }),
             });
 
-            render_pass.set_vertex_buffer(1, self.tree_instance_buffer.slice(..));
-
+            // Light sources draw ================================================================================
             render_pass.set_pipeline(&self.light_render_pipeline);
-            render_pass.draw_light_model(&self.sphere_model, &self.camera_bind_group, &self.light_bind_group);
-
+            render_pass.draw_light_model(&self.light_source_model, &self.camera_bind_group, &self.light_bind_group);
+            // Geometry draw =====================================================================================
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.draw_model_instanced(
-                &self.tree_model,
-                0..self.tree_instances.len() as u32,
-                &self.camera_bind_group,
-                &self.light_bind_group,
-            );
-
-            render_pass.set_vertex_buffer(1, self.plane_instance_buffer.slice(..));
-            render_pass.draw_model(
-                &self.floor_model,
-                &self.camera_bind_group,
-                &self.light_bind_group,
-            );
+            for i in 0..self.models.len() as usize {
+                render_pass.set_vertex_buffer(1, self.instances_data[i].1.slice(..));
+                render_pass.draw_model_instanced(
+                    &self.models[i],
+                    0..self.instances_data[i].0,
+                    &self.camera_bind_group,
+                    &self.light_bind_group,
+                )
+            }
         }
 
         self.queue.submit(iter::once(encoder.finish()));
