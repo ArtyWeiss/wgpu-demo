@@ -7,12 +7,13 @@ struct Camera {
 @group(0) @binding(0)
 var<uniform> camera: Camera;
 
-struct Light {
-    position: vec3<f32>,
-    color: vec4<f32>,
+struct Lights {
+    positions: array<vec3<f32>, 32>,
+    colors: array<vec4<f32>, 32>,
+    count: i32,
 }
 @group(1) @binding(0)
-var<uniform> light: Light;
+var<uniform> lights: Lights;
 
 struct VertexInput {
     @location(0) position: vec3<f32>,
@@ -26,9 +27,10 @@ struct VertexOutput {
 @vertex
 fn vs_main( model: VertexInput ) -> VertexOutput {
     let scale = 0.25;
+    let light_index: i32 = 0;
     var out: VertexOutput;
-    out.clip_position = camera.view_proj * vec4<f32>(model.position * scale + light.position, 1.0);
-    out.color = light.color.xyz * light.color.w;
+    out.clip_position = camera.view_proj * vec4<f32>(model.position * scale + lights.positions[light_index], 1.0);
+    out.color = lights.colors[light_index].xyz * lights.colors[light_index].w;
     return out;
 }
 

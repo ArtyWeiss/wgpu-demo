@@ -16,14 +16,17 @@ mod texture;
 mod resources;
 mod camera;
 
-const NUM_INSTANCES_PER_ROW: u32 = 3;
+const NUM_INSTANCES_PER_ROW: u32 = 4;
+const MAX_LIGHTS_COUNT: usize = 32;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-struct LightUniform {
-    position: [f32; 3],
-    _padding: u32,
-    color: [f32; 4], // x,y,z - color; w - power
+struct LightsUniform {
+    positions: [[f32; 4]; MAX_LIGHTS_COUNT],
+    colors: [[f32; 4]; MAX_LIGHTS_COUNT],
+    // x,y,z - color; w - power
+    count: i32,
+    _padding2: [u32; 3], // uniforms requiring 16 byte spacing
 }
 
 #[repr(C)]
@@ -137,7 +140,7 @@ struct State {
     size: winit::dpi::PhysicalSize<u32>,
 
     #[allow(dead_code)]
-    light_uniform: LightUniform,
+    light_uniform: LightsUniform,
     light_buffer: wgpu::Buffer,
     light_bind_group: wgpu::BindGroup,
     light_render_pipeline: wgpu::RenderPipeline,
@@ -337,11 +340,14 @@ impl State {
         (camera_uniform, camera_buffer, camera_bind_group_layout, camera_bind_group)
     }
 
-    fn create_light_data(device: &wgpu::Device) -> (LightUniform, wgpu::Buffer, wgpu::BindGroupLayout, wgpu::BindGroup) {
-        let light_uniform = LightUniform {
-            position: [3.75, 0.0, 0.8],
-            _padding: 0,
-            color: [1.0, 0.5, 0.2, 10.0],
+    fn create_light_data(device: &wgpu::Device) -> (LightsUniform, wgpu::Buffer, wgpu::BindGroupLayout, wgpu::BindGroup) {
+        let light_uniform = LightsUniform {
+            positions: [[3.75, 0.0, 0.8, 0.0]; MAX_LIGHTS_COUNT],
+            // positions: [[0.0, 0.0, 0.0, 0.0]; MAX_LIGHTS_COUNT],
+            // colors: [[1.0, 0.5, 0.2, 10.0]; MAX_LIGHTS_COUNT],
+            colors: [[0.0, 0.0, 0.0, 0.0]; MAX_LIGHTS_COUNT],
+            count: 3,
+            _padding2: [0; 3],
         };
         let light_buffer = device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor {
@@ -395,7 +401,7 @@ impl State {
     }
 
     fn create_instances(device: &wgpu::Device) -> Vec<(u32, wgpu::Buffer)> {
-        const SPACING: f32 = 4.0;
+        const SPACING: f32 = 3.5;
         let tree_instances = (0..NUM_INSTANCES_PER_ROW)
             .flat_map(|y| {
                 (0..NUM_INSTANCES_PER_ROW).map(move |x| {
@@ -543,8 +549,20 @@ impl State {
             bytemuck::cast_slice(&[self.camera_uniform]),
         );
 
-        let old_position: cgmath::Vector3<_> = self.light_uniform.position.into();
-        self.light_uniform.position = (cgmath::Quaternion::from_axis_angle((0.0, 0.0, 1.0).into(), cgmath::Deg(60.0 * dt.as_secs_f32())) * old_position).into();
+        let old_position: cgmath::Vector4<_> = self.light_uniform.positions[0].into();
+        let new_position: cgmath::Vector3<_> = (cgmath::Quaternion::from_axis_angle((0.0, 0.0, 1.0).into(), cgmath::Deg(60.0 * dt.as_secs_f32())) * old_position.xyz()).into();
+        self.light_uniform.positions[0] = [new_position.x, new_position.y, new_position.z, 0.0];
+        self.light_uniform.colors[0] = [0.05, 1.0, 0.05, 8.0];
+
+        let old_position: cgmath::Vector4<_> = self.light_uniform.positions[1].into();
+        let new_position: cgmath::Vector3<_> = (cgmath::Quaternion::from_axis_angle((0.0, 0.0, 1.0).into(), cgmath::Deg(30.0 * dt.as_secs_f32())) * old_position.xyz()).into();
+        self.light_uniform.positions[1] = [new_position.x, new_position.y, new_position.z, 0.0];
+        self.light_uniform.colors[1] = [1.0, 0.05, 0.05, 8.0];
+
+        let old_position: cgmath::Vector4<_> = self.light_uniform.positions[2].into();
+        let new_position: cgmath::Vector3<_> = (cgmath::Quaternion::from_axis_angle((0.0, 0.0, 1.0).into(), cgmath::Deg(15.0 * dt.as_secs_f32())) * old_position.xyz()).into();
+        self.light_uniform.positions[2] = [new_position.x, new_position.y, new_position.z, 0.0];
+        self.light_uniform.colors[2] = [0.05, 0.05, 1.0, 8.0];
         self.queue.write_buffer(&self.light_buffer, 0, bytemuck::cast_slice(&[self.light_uniform]));
     }
 
