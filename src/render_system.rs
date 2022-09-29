@@ -25,7 +25,7 @@ struct LightsUniform {
     positions: [[f32; 4]; MAX_LIGHTS_COUNT],
     colors: [[f32; 4]; MAX_LIGHTS_COUNT],
     // x,y,z - color; w - power
-    count: i32,
+    count: u32,
     _padding2: [u32; 3], // uniforms requiring 16 byte spacing
 }
 
@@ -264,7 +264,10 @@ impl State {
         let light_render_pipeline = {
             let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Light Pipeline Layout"),
-                bind_group_layouts: &[&camera_bind_group_layout, &light_bind_group_layout],
+                bind_group_layouts: &[
+                    &camera_bind_group_layout,
+                    &light_bind_group_layout
+                ],
                 push_constant_ranges: &[],
             });
             let shader = wgpu::ShaderModuleDescriptor {
@@ -344,7 +347,6 @@ impl State {
         let light_uniform = LightsUniform {
             positions: [[3.75, 0.0, 0.8, 0.0]; MAX_LIGHTS_COUNT],
             // positions: [[0.0, 0.0, 0.0, 0.0]; MAX_LIGHTS_COUNT],
-            // colors: [[1.0, 0.5, 0.2, 10.0]; MAX_LIGHTS_COUNT],
             colors: [[0.0, 0.0, 0.0, 0.0]; MAX_LIGHTS_COUNT],
             count: 3,
             _padding2: [0; 3],
@@ -606,7 +608,7 @@ impl State {
 
             // Light sources draw ================================================================================
             render_pass.set_pipeline(&self.light_render_pipeline);
-            render_pass.draw_light_model(&self.light_source_model, &self.camera_bind_group, &self.light_bind_group);
+            render_pass.draw_light_instanced(&self.light_source_model, 0..self.light_uniform.count as u32, &self.camera_bind_group, &self.light_bind_group);
             // Geometry draw =====================================================================================
             render_pass.set_pipeline(&self.render_pipeline);
             for i in 0..self.models.len() as usize {

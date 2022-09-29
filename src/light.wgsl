@@ -16,6 +16,7 @@ struct Lights {
 var<uniform> lights: Lights;
 
 struct VertexInput {
+    @builtin(instance_index) instance_id: u32,
     @location(0) position: vec3<f32>,
 }
 
@@ -26,9 +27,9 @@ struct VertexOutput {
 
 @vertex
 fn vs_main( model: VertexInput ) -> VertexOutput {
-    let scale = 0.25;
-    let light_index: i32 = 0;
+    let scale = 0.15;
     var out: VertexOutput;
+    let light_index = model.instance_id;
     out.clip_position = camera.view_proj * vec4<f32>(model.position * scale + lights.positions[light_index], 1.0);
     out.color = lights.colors[light_index].xyz * lights.colors[light_index].w;
     return out;
