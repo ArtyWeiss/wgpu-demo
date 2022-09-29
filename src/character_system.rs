@@ -1,5 +1,6 @@
 use instant::Duration;
 use cgmath;
+use cgmath::InnerSpace;
 use winit::event::*;
 
 pub struct Character {
@@ -62,7 +63,12 @@ impl CharacterController {
         let forward = cgmath::Vector3::unit_y();
         let right = cgmath::Vector3::unit_x();
         let dt = dt.as_secs_f32();
-        character.position += forward * (self.amount_forward - self.amount_backward) * character.speed * dt;
-        character.position += right * (self.amount_right - self.amount_left) * character.speed * dt;
+        let movement_forward = forward * (self.amount_forward - self.amount_backward);
+        let movement_right = right * (self.amount_right - self.amount_left);
+        if movement_right.magnitude() > 0.0 && movement_forward.magnitude() > 0.0 {
+            character.position += (movement_forward + movement_right).normalize() * character.speed * dt;
+        } else {
+            character.position += (movement_forward + movement_right) * character.speed * dt;
+        }
     }
 }
