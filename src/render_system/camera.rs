@@ -85,6 +85,7 @@ impl Projection {
 
 #[derive(Debug)]
 pub struct CameraController {
+    pub(crate) mouse_pressed: bool,
     amount_left: f32,
     amount_right: f32,
     amount_forward: f32,
@@ -102,6 +103,7 @@ pub struct CameraController {
 impl CameraController {
     pub fn new(speed: f32, sensitivity: f32) -> Self {
         Self {
+            mouse_pressed: false,
             amount_left: 0.0,
             amount_right: 0.0,
             amount_forward: 0.0,
@@ -120,19 +122,19 @@ impl CameraController {
     pub fn process_keyboard(&mut self, key: VirtualKeyCode, state: ElementState) -> bool {
         let amount = if state == ElementState::Pressed { 1.0 } else { 0.0 };
         match key {
-            VirtualKeyCode::W | VirtualKeyCode::Up => {
+            VirtualKeyCode::W => {
                 self.amount_forward = amount;
                 true
             }
-            VirtualKeyCode::S | VirtualKeyCode::Down => {
+            VirtualKeyCode::S => {
                 self.amount_backward = amount;
                 true
             }
-            VirtualKeyCode::A | VirtualKeyCode::Left => {
+            VirtualKeyCode::A => {
                 self.amount_left = amount;
                 true
             }
-            VirtualKeyCode::D | VirtualKeyCode::Right => {
+            VirtualKeyCode::D => {
                 self.amount_right = amount;
                 true
             }

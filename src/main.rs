@@ -10,15 +10,14 @@ use winit::{
 
 pub struct GameState {
     pub character: character_system::Character,
-    // Input =================================
-    pub mouse_pressed: bool,
+    pub character_controller: character_system::CharacterController,
 }
 
 impl GameState {
     fn new() -> Self {
         Self {
-            character: character_system::Character::new(60.0),
-            mouse_pressed: false,
+            character: character_system::Character::new(2.0),
+            character_controller: character_system::CharacterController::new(),
         }
     }
 
@@ -31,7 +30,10 @@ impl GameState {
                     ..
                 },
                 ..
-            } => camera_controller.process_keyboard(*key, *state),
+            } => {
+                camera_controller.process_keyboard(*key, *state) |
+                self.character_controller.process_keyboard(*key, *state)
+            },
             WindowEvent::MouseWheel { delta, .. } => {
                 camera_controller.process_scroll(delta);
                 true
@@ -41,7 +43,7 @@ impl GameState {
                 state,
                 ..
             } => {
-                self.mouse_pressed = *state == ElementState::Pressed;
+                camera_controller.mouse_pressed = *state == ElementState::Pressed;
                 true
             }
             _ => false,
@@ -75,7 +77,7 @@ async fn run() {
             Event::DeviceEvent {
                 event: DeviceEvent::MouseMotion { delta, },
                 ..
-            } => if game_state.mouse_pressed {
+            } => if state.camera_controller.mouse_pressed {
                 state.camera_controller.process_mouse(delta.0, delta.1)
             }
             Event::WindowEvent {
@@ -106,7 +108,7 @@ async fn run() {
                 let now = instant::Instant::now();
                 let dt = now - last_render_time;
                 last_render_time = now;
-                character_system::Character::update(&mut game_state.character, [0.0, 0.0].into(), dt);
+                game_state.character_controller.update_character(&mut game_state.character, dt);
                 state.update(&game_state, dt);
                 match state.render() {
                     Ok(_) => {}
