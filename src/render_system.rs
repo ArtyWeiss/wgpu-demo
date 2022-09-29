@@ -11,6 +11,9 @@ use winit::{
 
 use model::{DrawLight, DrawModel, Vertex};
 
+use crate::character_system::Character;
+use crate::GameState;
+
 mod model;
 mod texture;
 mod resources;
@@ -18,6 +21,23 @@ mod camera;
 
 const NUM_INSTANCES_PER_ROW: u32 = 4;
 const MAX_LIGHTS_COUNT: usize = 32;
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+struct CharacterUniform {
+    model: [[f32; 4]; 4],
+}
+
+impl CharacterUniform {
+    fn new() -> Self {
+        Self {
+            model: cgmath::Matrix4::identity().into(),
+        }
+    }
+    fn update_matrix(&mut self, position: cgmath::Vector3<f32>) {
+        self.model = cgmath::Matrix4::from_translation(position).into();
+    }
+}
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
@@ -122,7 +142,7 @@ impl model::Vertex for InstanceRaw {
     }
 }
 
-struct State {
+pub(crate) struct State {
     surface: wgpu::Surface,
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -130,20 +150,27 @@ struct State {
 
     camera: camera::Camera,
     projection: camera::Projection,
-    camera_controller: camera::CameraController,
-    mouse_pressed: bool,
+    pub(crate) camera_controller: camera::CameraController,
+    pub(crate) mouse_pressed: bool,
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
 
     depth_texture: texture::Texture,
-    size: winit::dpi::PhysicalSize<u32>,
+    pub(crate) size: winit::dpi::PhysicalSize<u32>,
 
     #[allow(dead_code)]
     light_uniform: LightsUniform,
     light_buffer: wgpu::Buffer,
     light_bind_group: wgpu::BindGroup,
     light_render_pipeline: wgpu::RenderPipeline,
+
+    #[allow(dead_code)]
+    character_uniform: CharacterUniform,
+    character_buffer: wgpu::Buffer,
+    character_bind_group: wgpu::BindGroup,
+    character_render_pipeline: wgpu::RenderPipeline,
+    character_model: model::Model,
 
     models: Vec<model::Model>,
     light_source_model: model::Model,
@@ -152,7 +179,7 @@ struct State {
 }
 
 impl State {
-    async fn new(window: &Window) -> Self {
+    pub(crate) async fn new(window: &Window, game_state: &GameState) -> Self {
         // Initialize surface =============================================================================
         let size = window.inner_size();
         log::warn!("WGPU setup");
@@ -226,6 +253,14 @@ impl State {
             &queue,
             &texture_bind_group_layout,
         ).await.unwrap();
+        // Load character and create uniform ====================================================================
+        let character_model = resources::load_model(
+            "cylinder.obj",
+            &device,
+            &queue,
+            &texture_bind_group_layout,
+        ).await.unwrap();
+        let (character_uniform, character_buffer, character_bind_group_layout, character_bind_group) = Self::create_character_data(&device);
 
         // Create camera and camera data ========================================================================
         let camera = camera::Camera::new((0.0, -10.0, 5.0), cgmath::Rad(0.0), cgmath::Rad(0.0));
@@ -284,6 +319,31 @@ impl State {
             )
         };
 
+        let character_render_pipeline = {
+            let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Character Pipeline Layout"),
+                bind_group_layouts: &[
+                    &texture_bind_group_layout,
+                    &camera_bind_group_layout,
+                    &light_bind_group_layout,
+                    &character_bind_group_layout,
+                ],
+                push_constant_ranges: &[],
+            });
+            let shader = wgpu::ShaderModuleDescriptor {
+                label: Some("Character Shader"),
+                source: wgpu::ShaderSource::Wgsl(include_str!("character.wgsl").into()),
+            };
+            Self::create_render_pipeline(
+                &device,
+                &layout,
+                config.format,
+                Some(texture::Texture::DEPTH_FORMAT),
+                &[model::ModelVertex::desc()],
+                shader,
+            )
+        };
+
         Self {
             surface,
             device,
@@ -306,6 +366,11 @@ impl State {
             light_source_model,
             instances_data,
             render_pipeline,
+            character_uniform,
+            character_buffer,
+            character_bind_group,
+            character_render_pipeline,
+            character_model,
         }
     }
 
@@ -341,6 +406,39 @@ impl State {
         });
 
         (camera_uniform, camera_buffer, camera_bind_group_layout, camera_bind_group)
+    }
+
+    fn create_character_data(device: &wgpu::Device) -> (CharacterUniform, wgpu::Buffer, wgpu::BindGroupLayout, wgpu::BindGroup) {
+        let mut character_uniform = CharacterUniform::new();
+        let character_buffer = device.create_buffer_init(
+            &wgpu::util::BufferInitDescriptor {
+                label: Some("Character VB"),
+                contents: bytemuck::cast_slice(&[character_uniform]),
+                usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            }
+        );
+        let character_bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+            label: None,
+        });
+        let character_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &character_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: character_buffer.as_entire_binding(),
+            }],
+            label: None,
+        });
+        (character_uniform, character_buffer, character_bind_group_layout, character_bind_group)
     }
 
     fn create_light_data(device: &wgpu::Device) -> (LightsUniform, wgpu::Buffer, wgpu::BindGroupLayout, wgpu::BindGroup) {
@@ -506,7 +604,7 @@ impl State {
         })
     }
 
-    fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
+    pub(crate) fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
         if new_size.width > 0 && new_size.height > 0 {
             self.projection.resize(new_size.width, new_size.height);
             self.size = new_size;
@@ -516,7 +614,7 @@ impl State {
             self.depth_texture = texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
         }
     }
-    fn input(&mut self, event: &WindowEvent) -> bool {
+    pub(crate) fn input(&mut self, event: &WindowEvent) -> bool {
         match event {
             WindowEvent::KeyboardInput {
                 input: KeyboardInput {
@@ -542,13 +640,20 @@ impl State {
         }
     }
 
-    fn update(&mut self, dt: instant::Duration) {
+    pub(crate) fn update(&mut self, character: &Character, dt: instant::Duration) {
         self.camera_controller.update_camera(&mut self.camera, dt);
         self.camera_uniform.update_view_proj(&self.camera, &self.projection);
         self.queue.write_buffer(
             &self.camera_buffer,
             0,
             bytemuck::cast_slice(&[self.camera_uniform]),
+        );
+
+        self.character_uniform.update_matrix(character.position.clone());
+        self.queue.write_buffer(
+            &self.character_buffer,
+            0,
+            bytemuck::cast_slice(&[self.character_uniform]),
         );
 
         let old_position: cgmath::Vector4<_> = self.light_uniform.positions[0].into();
@@ -568,7 +673,7 @@ impl State {
         self.queue.write_buffer(&self.light_buffer, 0, bytemuck::cast_slice(&[self.light_uniform]));
     }
 
-    fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+    pub(crate) fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
         let view = output
             .texture
@@ -620,6 +725,9 @@ impl State {
                     &self.light_bind_group,
                 )
             }
+            // Character draw =================================================================================
+            render_pass.set_pipeline(&self.character_render_pipeline);
+            render_pass.draw_character(&self.character_model, &self.camera_bind_group, &self.light_bind_group, &self.character_bind_group);
         }
 
         self.queue.submit(iter::once(encoder.finish()));
@@ -627,68 +735,4 @@ impl State {
 
         Ok(())
     }
-}
-
-pub async fn run() {
-    env_logger::init();
-
-    let event_loop = EventLoop::new();
-    let title = env!("CARGO_PKG_NAME");
-    let window = winit::window::WindowBuilder::new()
-        .with_title(title)
-        .build(&event_loop)
-        .unwrap();
-
-    let mut state = State::new(&window).await;
-    let mut last_render_time = instant::Instant::now();
-
-    event_loop.run(move |event, _, control_flow| {
-        *control_flow = ControlFlow::Poll;
-        match event {
-            Event::MainEventsCleared => window.request_redraw(),
-            Event::DeviceEvent {
-                event: DeviceEvent::MouseMotion { delta, },
-                ..
-            } => if state.mouse_pressed {
-                state.camera_controller.process_mouse(delta.0, delta.1)
-            }
-            Event::WindowEvent {
-                ref event,
-                window_id,
-            } if window_id == window.id() && !state.input(event) => {
-                match event {
-                    WindowEvent::CloseRequested
-                    | WindowEvent::KeyboardInput {
-                        input:
-                        KeyboardInput {
-                            state: ElementState::Pressed,
-                            virtual_keycode: Some(VirtualKeyCode::Escape),
-                            ..
-                        },
-                        ..
-                    } => *control_flow = ControlFlow::Exit,
-                    WindowEvent::Resized(physical_size) => {
-                        state.resize(*physical_size);
-                    }
-                    WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
-                        state.resize(**new_inner_size);
-                    }
-                    _ => {}
-                }
-            }
-            Event::RedrawRequested(window_id) if window_id == window.id() => {
-                let now = instant::Instant::now();
-                let dt = now - last_render_time;
-                last_render_time = now;
-                state.update(dt);
-                match state.render() {
-                    Ok(_) => {}
-                    Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => state.resize(state.size),
-                    Err(wgpu::SurfaceError::OutOfMemory) => *control_flow = ControlFlow::Exit,
-                    Err(wgpu::SurfaceError::Timeout) => log::warn!("Surface timeout"),
-                }
-            }
-            _ => {}
-        }
-    });
 }
