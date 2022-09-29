@@ -3,21 +3,16 @@ use std::iter;
 use cgmath::prelude::*;
 use instant;
 use wgpu::util::DeviceExt;
-use winit::{
-    event::*,
-    event_loop::{ControlFlow, EventLoop},
-    window::Window,
-};
+use winit::window::Window;
 
 use model::{DrawLight, DrawModel, Vertex};
 
-use crate::character_system::Character;
 use crate::GameState;
 
-mod model;
-mod texture;
-mod resources;
-mod camera;
+use crate::render_system::texture;
+use crate::render_system::camera;
+use crate::render_system::resources;
+use crate::render_system::model;
 
 const NUM_INSTANCES_PER_ROW: u32 = 4;
 const MAX_LIGHTS_COUNT: usize = 32;
@@ -142,7 +137,7 @@ impl model::Vertex for InstanceRaw {
     }
 }
 
-pub(crate) struct State {
+pub struct State {
     surface: wgpu::Surface,
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -151,7 +146,6 @@ pub(crate) struct State {
     camera: camera::Camera,
     projection: camera::Projection,
     pub(crate) camera_controller: camera::CameraController,
-    pub(crate) mouse_pressed: bool,
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
@@ -179,7 +173,7 @@ pub(crate) struct State {
 }
 
 impl State {
-    pub(crate) async fn new(window: &Window, game_state: &GameState) -> Self {
+    pub(crate) async fn new(window: &Window) -> Self {
         // Initialize surface =============================================================================
         let size = window.inner_size();
         log::warn!("WGPU setup");
@@ -349,7 +343,6 @@ impl State {
             device,
             queue,
             config,
-            mouse_pressed: false,
             camera,
             projection,
             camera_controller,
@@ -409,7 +402,7 @@ impl State {
     }
 
     fn create_character_data(device: &wgpu::Device) -> (CharacterUniform, wgpu::Buffer, wgpu::BindGroupLayout, wgpu::BindGroup) {
-        let mut character_uniform = CharacterUniform::new();
+        let character_uniform = CharacterUniform::new();
         let character_buffer = device.create_buffer_init(
             &wgpu::util::BufferInitDescriptor {
                 label: Some("Character VB"),
@@ -614,33 +607,9 @@ impl State {
             self.depth_texture = texture::Texture::create_depth_texture(&self.device, &self.config, "depth_texture");
         }
     }
-    pub(crate) fn input(&mut self, event: &WindowEvent) -> bool {
-        match event {
-            WindowEvent::KeyboardInput {
-                input: KeyboardInput {
-                    virtual_keycode: Some(key),
-                    state,
-                    ..
-                },
-                ..
-            } => self.camera_controller.process_keyboard(*key, *state),
-            WindowEvent::MouseWheel { delta, .. } => {
-                self.camera_controller.process_scroll(delta);
-                true
-            }
-            WindowEvent::MouseInput {
-                button: MouseButton::Right,
-                state,
-                ..
-            } => {
-                self.mouse_pressed = *state == ElementState::Pressed;
-                true
-            }
-            _ => false,
-        }
-    }
 
-    pub(crate) fn update(&mut self, character: &Character, dt: instant::Duration) {
+
+    pub(crate) fn update(&mut self, game_state: &GameState, dt: instant::Duration) {
         self.camera_controller.update_camera(&mut self.camera, dt);
         self.camera_uniform.update_view_proj(&self.camera, &self.projection);
         self.queue.write_buffer(
@@ -649,7 +618,7 @@ impl State {
             bytemuck::cast_slice(&[self.camera_uniform]),
         );
 
-        self.character_uniform.update_matrix(character.position.clone());
+        self.character_uniform.update_matrix(game_state.character.position.clone());
         self.queue.write_buffer(
             &self.character_buffer,
             0,
