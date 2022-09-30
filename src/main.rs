@@ -1,12 +1,14 @@
 mod render_system;
 mod character_system;
 
-use crate::render_system::CameraController;
+use cgmath::Point3;
+use crate::render_system::{CameraController, FollowCameraController};
 
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
 };
+use winit::dpi::PhysicalSize;
 
 pub struct GameState {
     pub character: character_system::Character,
@@ -16,12 +18,12 @@ pub struct GameState {
 impl GameState {
     fn new() -> Self {
         Self {
-            character: character_system::Character::new(2.0),
+            character: character_system::Character::new(1.0 ,3.5),
             character_controller: character_system::CharacterController::new(),
         }
     }
 
-    fn input(&mut self, camera_controller: &mut CameraController, event: &WindowEvent) -> bool {
+    fn input(&mut self, camera_controller: &mut FollowCameraController, event: &WindowEvent) -> bool {
         match event {
             WindowEvent::KeyboardInput {
                 input: KeyboardInput {
@@ -31,11 +33,11 @@ impl GameState {
                 },
                 ..
             } => {
-                camera_controller.process_keyboard(*key, *state) |
+                // camera_controller.process_keyboard(*key, *state) |
                 self.character_controller.process_keyboard(*key, *state)
             },
             WindowEvent::MouseWheel { delta, .. } => {
-                camera_controller.process_scroll(delta);
+                // camera_controller.process_scroll(delta);
                 true
             }
             WindowEvent::MouseInput {
@@ -62,7 +64,7 @@ async fn run() {
     let title = "Junk Souls";
     let window = winit::window::WindowBuilder::new()
         .with_title(title)
-        .with_maximized(true)
+        .with_inner_size(PhysicalSize::new(1280, 720))
         .build(&event_loop)
         .unwrap();
 

@@ -1,4 +1,5 @@
 use std::iter;
+use cgmath::Point3;
 
 use cgmath::prelude::*;
 use instant;
@@ -29,8 +30,8 @@ impl CharacterUniform {
             model: cgmath::Matrix4::identity().into(),
         }
     }
-    fn update_matrix(&mut self, position: cgmath::Vector3<f32>) {
-        self.model = cgmath::Matrix4::from_translation(position).into();
+    fn update_matrix(&mut self, position: cgmath::Point3<f32>) {
+        self.model = cgmath::Matrix4::from_translation(position.to_vec()).into();
     }
 }
 
@@ -145,7 +146,8 @@ pub struct State {
 
     camera: camera::Camera,
     projection: camera::Projection,
-    pub(crate) camera_controller: camera::CameraController,
+    pub(crate) camera_controller: camera::FollowCameraController,
+    // pub(crate) follow_camera_controller: camera::CameraController,
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
@@ -257,10 +259,15 @@ impl State {
         let (character_uniform, character_buffer, character_bind_group_layout, character_bind_group) = Self::create_character_data(&device);
 
         // Create camera and camera data ========================================================================
-        let camera = camera::Camera::new((0.0, -10.0, 5.0), cgmath::Rad(0.0), cgmath::Rad(0.0));
+        let camera_position = Point3::new(0.0, -2.0, 1.5);
+        let camera = camera::Camera::new(camera_position, cgmath::Rad(0.0), cgmath::Rad(0.0));
         let projection = camera::Projection::new(config.width, config.height, cgmath::Deg(45.0), 0.1, 100.0);
-        let camera_controller = camera::CameraController::new(4.0, 0.5);
         let (camera_uniform, camera_buffer, camera_bind_group_layout, camera_bind_group) = Self::create_camera_data(&device, &camera, &projection);
+
+        // let camera_controller = camera::CameraController::new(4.0, 0.5);
+        let look_direction = -camera_position.to_vec().normalize();
+        let camera_controller = camera::FollowCameraController::new(1.5, 6.5, 0.75, look_direction);
+        // let follow_camera_controller = camera::FollowCameraController::new(4.0, 0.5, 2.0);
 
         // Create light data ====================================================================================
         let (light_uniform, light_buffer, light_bind_group_layout, light_bind_group) = Self::create_light_data(&device);
@@ -346,6 +353,7 @@ impl State {
             camera,
             projection,
             camera_controller,
+            // follow_camera_controller,
             camera_uniform,
             camera_buffer,
             camera_bind_group,
@@ -610,7 +618,9 @@ impl State {
 
 
     pub(crate) fn update(&mut self, game_state: &GameState, dt: instant::Duration) {
-        self.camera_controller.update_camera(&mut self.camera, dt);
+        let mut character_head = game_state.character.position;
+        character_head.z += game_state.character.head_height;
+        self.camera_controller.update_camera(&mut self.camera, dt, character_head);
         self.camera_uniform.update_view_proj(&self.camera, &self.projection);
         self.queue.write_buffer(
             &self.camera_buffer,

@@ -2,7 +2,7 @@ use cgmath::*;
 use winit::event::*;
 use winit::dpi::PhysicalPosition;
 use instant::Duration;
-use std::f32::consts::FRAC_PI_2;
+use std::f32::consts::{FRAC_PI_2, FRAC_PI_4, PI};
 
 #[rustfmt::skip]
 pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(
@@ -12,7 +12,7 @@ pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(
     0.0, 0.0, 0.5, 1.0,
 );
 
-const SAFE_FRAC_PI_2: f32 = FRAC_PI_2 - 0.00001;
+const SAFE_FRAC_PI_2: f32 = FRAC_PI_2 - 0.0000001;
 
 #[derive(Debug)]
 pub struct Camera {
@@ -81,6 +81,123 @@ impl Projection {
     pub fn calc_matrix(&self) -> Matrix4<f32> {
         OPENGL_TO_WGPU_MATRIX * perspective(self.fovy, self.aspect, self.znear, self.zfar)
     }
+}
+
+#[derive(Debug)]
+pub struct FollowCameraController {
+    pub(crate) mouse_pressed: bool,
+    rotate_horizontal: f32,
+    rotate_vertical: f32,
+    sensitivity: f32,
+    distance: f32,
+    focus_radius: f32,
+    look_direction: Vector3<f32>,
+    focus_point: Point3<f32>,
+}
+
+impl FollowCameraController {
+    pub fn new(
+        sensitivity: f32,
+        distance: f32,
+        focus_radius: f32,
+        look_direction: Vector3<f32>,
+    ) -> Self {
+        Self {
+            mouse_pressed: false,
+            rotate_horizontal: 0.0,
+            rotate_vertical: 0.0,
+            sensitivity,
+            distance,
+            focus_radius,
+            look_direction,
+            focus_point: Point3::new(0.0, 0.0, 0.0),
+        }
+    }
+
+    pub fn process_mouse(&mut self, mouse_dx: f64, mouse_dy: f64) {
+        self.rotate_horizontal = mouse_dx as f32;
+        self.rotate_vertical = mouse_dy as f32;
+    }
+
+    pub fn update_camera(&mut self, camera: &mut Camera, dt: Duration, target: Point3<f32>) {
+        let dt = dt.as_secs_f32();
+        if self.focus_radius > 0.0 {
+            let distance = (target - self.focus_point).magnitude();
+            let mut t: f32 = 1.0;
+            let focus_centering: f32 = 0.85;
+            if distance > 0.01 {
+                t = (1.0 - focus_centering).powf(dt);
+            }
+            if distance > self.focus_radius {
+                t = t.min(self.focus_radius / distance);
+            }
+            self.focus_point = Point3::from_vec(target.to_vec().lerp(self.focus_point.to_vec(), t));
+        } else {
+            self.focus_point = target;
+        }
+
+        camera.position = self.focus_point - self.look_direction * self.distance;
+        camera.pitch = Rad(-FRAC_PI_4);
+
+        /*
+                // Orbit
+                let dt = dt.as_secs_f32();
+                let right = self.offset_direction.cross(Vector3::unit_z());
+                self.offset_direction = (self.offset_direction + right * self.rotate_horizontal * self.sensitivity * dt).normalize();
+
+                let mut up = self.offset_direction.cross(-right);
+                let dot = self.offset_direction.dot(Vector3::unit_z());
+                if dot < self.min_pitch_dot && self.rotate_vertical < 0.0 {
+                    self.rotate_vertical = 0.0;
+                }
+                if dot > self.max_pitch_dot && self.rotate_vertical > 0.0 {
+                    self.rotate_vertical = 0.0;
+                }
+                self.offset_direction = (self.offset_direction + up * self.rotate_vertical * self.sensitivity * dt).normalize();
+                self.rotate_horizontal = 0.0;
+                self.rotate_vertical = 0.0;
+                // Follow
+                let new_position = target + self.offset_direction * self.distance;
+                camera.position = Point3::from_vec(new_position.to_vec().lerp(camera.position.to_vec(), self.smoothing_amount));
+                // Aim
+                let forward = target - camera.position;
+                let forward_norm = forward.normalize();
+                let (yaw, pitch) = yaw_and_pitch_from_vector(forward_norm);
+                camera.yaw = yaw;
+                camera.pitch = pitch;
+
+                if camera.pitch < -Rad(SAFE_FRAC_PI_2) {
+                    camera.pitch = -Rad(SAFE_FRAC_PI_2);
+                } else if camera.pitch > Rad(SAFE_FRAC_PI_2) {
+                    camera.pitch = Rad(SAFE_FRAC_PI_2);
+                }*/
+    }
+}
+
+fn yaw_and_pitch_from_vector(v: cgmath::Vector3<f32>) -> (Rad<f32>, Rad<f32>) {
+    let y = Vector3::unit_y();
+    let z = Vector3::unit_z();
+
+    let v_xy = Vector3::new(v.x, v.y, 0.0).normalize();
+    if v_xy == Vector3::zero() {
+        if v.dot(z) > 0.0 {
+            return (Rad(0.0), Rad(FRAC_PI_2));
+        } else {
+            return (Rad(0.0), Rad(-FRAC_PI_2));
+        }
+    }
+
+    let mut yaw = v_xy.angle(y);
+    if v.x < 0.0 {
+        yaw *= -1.0;
+    }
+
+    let mut pitch = v_xy.angle(v);
+    if v.z < 0.0 {
+        pitch *= -1.0;
+    }
+
+    (yaw, pitch)
 }
 
 #[derive(Debug)]

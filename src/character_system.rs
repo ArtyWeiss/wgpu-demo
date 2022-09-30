@@ -4,15 +4,17 @@ use cgmath::InnerSpace;
 use winit::event::*;
 
 pub struct Character {
-    pub position: cgmath::Vector3<f32>,
+    pub position: cgmath::Point3<f32>,
+    pub head_height: f32,
     pub direction: cgmath::Vector3<f32>,
     pub speed: f32,
 }
 
 impl Character {
-    pub fn new(speed: f32) -> Self {
+    pub fn new(head_height: f32, speed: f32) -> Self {
         Self {
-            position: cgmath::Vector3 { x: 0.0, y: 0.0, z: 0.0 },
+            position: cgmath::Point3 { x: 0.0, y: 0.0, z: 0.0 },
+            head_height,
             direction: cgmath::Vector3::unit_y(),
             speed,
         }
@@ -39,19 +41,19 @@ impl CharacterController {
     pub fn process_keyboard(&mut self, key: VirtualKeyCode, state: ElementState) -> bool {
         let amount = if state == ElementState::Pressed { 1.0 } else { 0.0 };
         match key {
-            VirtualKeyCode::Up => {
+            VirtualKeyCode::W => {
                 self.amount_forward = amount;
                 true
             }
-            VirtualKeyCode::Down => {
+            VirtualKeyCode::S => {
                 self.amount_backward = amount;
                 true
             }
-            VirtualKeyCode::Left => {
+            VirtualKeyCode::A => {
                 self.amount_left = amount;
                 true
             }
-            VirtualKeyCode::Right => {
+            VirtualKeyCode::D => {
                 self.amount_right = amount;
                 true
             }
