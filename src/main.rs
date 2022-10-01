@@ -64,7 +64,8 @@ async fn run() {
     let title = "Junk Souls";
     let window = winit::window::WindowBuilder::new()
         .with_title(title)
-        .with_inner_size(PhysicalSize::new(1280, 720))
+        .with_maximized(true)
+        // .with_inner_size(PhysicalSize::new(1280, 720))
         .build(&event_loop)
         .unwrap();
 
@@ -79,7 +80,7 @@ async fn run() {
             Event::DeviceEvent {
                 event: DeviceEvent::MouseMotion { delta, },
                 ..
-            } => if state.camera_controller.mouse_pressed {
+            } => if delta.0.abs() > 0.1 || delta.1.abs() > 0.1 {
                 state.camera_controller.process_mouse(delta.0, delta.1)
             }
             Event::WindowEvent {

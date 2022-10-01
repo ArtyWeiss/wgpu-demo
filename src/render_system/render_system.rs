@@ -259,14 +259,14 @@ impl State {
         let (character_uniform, character_buffer, character_bind_group_layout, character_bind_group) = Self::create_character_data(&device);
 
         // Create camera and camera data ========================================================================
-        let camera_position = Point3::new(0.0, -2.0, 1.5);
+        let camera_position = Point3::new(0.0, 0.0, 0.0);
         let camera = camera::Camera::new(camera_position, cgmath::Rad(0.0), cgmath::Rad(0.0));
         let projection = camera::Projection::new(config.width, config.height, cgmath::Deg(45.0), 0.1, 100.0);
         let (camera_uniform, camera_buffer, camera_bind_group_layout, camera_bind_group) = Self::create_camera_data(&device, &camera, &projection);
 
         // let camera_controller = camera::CameraController::new(4.0, 0.5);
         let look_direction = -camera_position.to_vec().normalize();
-        let camera_controller = camera::FollowCameraController::new(1.5, 6.5, 0.75, look_direction);
+        let camera_controller = camera::FollowCameraController::new(1.5, 6.5, 0.75);
         // let follow_camera_controller = camera::FollowCameraController::new(4.0, 0.5, 2.0);
 
         // Create light data ====================================================================================
