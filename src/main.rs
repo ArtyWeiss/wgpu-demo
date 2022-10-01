@@ -1,9 +1,6 @@
 mod render_system;
 mod character_system;
 
-use cgmath::Point3;
-use crate::render_system::{CameraController, FollowCameraController};
-
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
@@ -18,12 +15,12 @@ pub struct GameState {
 impl GameState {
     fn new() -> Self {
         Self {
-            character: character_system::Character::new(1.0 ,3.5),
+            character: character_system::Character::new(1.0 ,2.5),
             character_controller: character_system::CharacterController::new(),
         }
     }
 
-    fn input(&mut self, camera_controller: &mut FollowCameraController, event: &WindowEvent) -> bool {
+    fn input(&mut self, event: &WindowEvent) -> bool {
         match event {
             WindowEvent::KeyboardInput {
                 input: KeyboardInput {
@@ -33,21 +30,8 @@ impl GameState {
                 },
                 ..
             } => {
-                // camera_controller.process_keyboard(*key, *state) |
                 self.character_controller.process_keyboard(*key, *state)
             },
-            WindowEvent::MouseWheel { delta, .. } => {
-                // camera_controller.process_scroll(delta);
-                true
-            }
-            WindowEvent::MouseInput {
-                button: MouseButton::Right,
-                state,
-                ..
-            } => {
-                camera_controller.mouse_pressed = *state == ElementState::Pressed;
-                true
-            }
             _ => false,
         }
     }
@@ -64,10 +48,11 @@ async fn run() {
     let title = "Junk Souls";
     let window = winit::window::WindowBuilder::new()
         .with_title(title)
-        .with_maximized(true)
-        // .with_inner_size(PhysicalSize::new(1280, 720))
+        // .with_maximized(true)
+        .with_inner_size(PhysicalSize::new(1280, 720))
         .build(&event_loop)
         .unwrap();
+    window.set_cursor_visible(false);
 
     let mut game_state = GameState::new();
     let mut state = render_system::State::new(&window).await;
@@ -86,7 +71,7 @@ async fn run() {
             Event::WindowEvent {
                 ref event,
                 window_id,
-            } if window_id == window.id() && !game_state.input(&mut state.camera_controller, event) => {
+            } if window_id == window.id() && !game_state.input(event) => {
                 match event {
                     WindowEvent::CloseRequested
                     | WindowEvent::KeyboardInput {
@@ -111,7 +96,7 @@ async fn run() {
                 let now = instant::Instant::now();
                 let dt = now - last_render_time;
                 last_render_time = now;
-                game_state.character_controller.update_character(&mut game_state.character, dt);
+                game_state.character_controller.update_character(&mut game_state.character, &state.camera, dt);
                 state.update(&game_state, dt);
                 match state.render() {
                     Ok(_) => {}

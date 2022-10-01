@@ -1,7 +1,9 @@
 use instant::Duration;
 use cgmath;
-use cgmath::InnerSpace;
+use cgmath::{Angle, InnerSpace};
 use winit::event::*;
+
+use crate::render_system::Camera;
 
 pub struct Character {
     pub position: cgmath::Point3<f32>,
@@ -61,9 +63,10 @@ impl CharacterController {
         }
     }
 
-    pub fn update_character(&mut self, character: &mut Character, dt: Duration) {
-        let forward = cgmath::Vector3::unit_y();
-        let right = cgmath::Vector3::unit_x();
+    pub fn update_character(&mut self, character: &mut Character, camera: &Camera, dt: Duration) {
+        let (yaw_sin, yaw_cos) = camera.yaw.sin_cos();
+        let forward = cgmath::Vector3::new(yaw_sin, yaw_cos, 0.0);
+        let right = cgmath::Vector3::new(yaw_cos, -yaw_sin, 0.0);
         let dt = dt.as_secs_f32();
         let movement_forward = forward * (self.amount_forward - self.amount_backward);
         let movement_right = right * (self.amount_right - self.amount_left);

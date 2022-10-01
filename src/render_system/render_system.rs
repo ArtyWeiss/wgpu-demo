@@ -144,10 +144,9 @@ pub struct State {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
 
-    camera: camera::Camera,
+    pub(crate) camera: camera::Camera,
     projection: camera::Projection,
     pub(crate) camera_controller: camera::FollowCameraController,
-    // pub(crate) follow_camera_controller: camera::CameraController,
     camera_uniform: CameraUniform,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
@@ -264,10 +263,7 @@ impl State {
         let projection = camera::Projection::new(config.width, config.height, cgmath::Deg(45.0), 0.1, 100.0);
         let (camera_uniform, camera_buffer, camera_bind_group_layout, camera_bind_group) = Self::create_camera_data(&device, &camera, &projection);
 
-        // let camera_controller = camera::CameraController::new(4.0, 0.5);
-        let look_direction = -camera_position.to_vec().normalize();
-        let camera_controller = camera::FollowCameraController::new(1.5, 6.5, 0.75);
-        // let follow_camera_controller = camera::FollowCameraController::new(4.0, 0.5, 2.0);
+        let camera_controller = camera::FollowCameraController::new(1.0, 5.0, 0.75, -75.0, 10.0);
 
         // Create light data ====================================================================================
         let (light_uniform, light_buffer, light_bind_group_layout, light_bind_group) = Self::create_light_data(&device);
@@ -353,7 +349,6 @@ impl State {
             camera,
             projection,
             camera_controller,
-            // follow_camera_controller,
             camera_uniform,
             camera_buffer,
             camera_bind_group,

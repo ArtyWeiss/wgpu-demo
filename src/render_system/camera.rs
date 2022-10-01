@@ -2,7 +2,7 @@ use cgmath::*;
 use winit::event::*;
 use winit::dpi::PhysicalPosition;
 use instant::Duration;
-use std::f32::consts::{FRAC_PI_2, FRAC_PI_4, PI};
+use std::f32::consts::FRAC_PI_2;
 
 #[rustfmt::skip]
 pub const OPENGL_TO_WGPU_MATRIX: Matrix4<f32> = Matrix4::new(
@@ -17,8 +17,8 @@ const SAFE_FRAC_PI_2: f32 = FRAC_PI_2 - 0.00001;
 #[derive(Debug)]
 pub struct Camera {
     pub position: Point3<f32>,
-    yaw: Rad<f32>,
-    pitch: Rad<f32>,
+    pub yaw: Rad<f32>,
+    pub pitch: Rad<f32>,
 }
 
 impl Camera {
@@ -83,30 +83,36 @@ impl Projection {
     }
 }
 
+#[allow(unused)]
 #[derive(Debug)]
 pub struct FollowCameraController {
-    pub(crate) mouse_pressed: bool,
     rotate_horizontal: f32,
     rotate_vertical: f32,
     sensitivity: f32,
     distance: f32,
     focus_radius: f32,
+    min_vertical_angle: f32,
+    max_vertical_angle: f32,
     focus_point: Point3<f32>,
 }
 
+#[allow(unused)]
 impl FollowCameraController {
     pub fn new(
         sensitivity: f32,
         distance: f32,
         focus_radius: f32,
+        min_vertical_angle: f32,
+        max_vertical_angle: f32,
     ) -> Self {
         Self {
-            mouse_pressed: false,
             rotate_horizontal: 0.0,
             rotate_vertical: 0.0,
             sensitivity,
             distance,
             focus_radius,
+            min_vertical_angle,
+            max_vertical_angle,
             focus_point: Point3::new(0.0, 0.0, 0.0),
         }
     }
@@ -136,14 +142,10 @@ impl FollowCameraController {
         // Rotate
         camera.yaw += Rad(self.rotate_horizontal) * self.sensitivity * dt;
         camera.pitch += Rad(-self.rotate_vertical) * self.sensitivity * dt;
+        camera.pitch = Rad(camera.pitch.0.clamp(Rad::from(Deg(self.min_vertical_angle)).0, Rad::from(Deg(self.max_vertical_angle)).0));
         self.rotate_horizontal = 0.0;
         self.rotate_vertical = 0.0;
 
-        if camera.pitch < -Rad(SAFE_FRAC_PI_2) {
-            camera.pitch = -Rad(SAFE_FRAC_PI_2);
-        } else if camera.pitch > Rad(SAFE_FRAC_PI_2) {
-            camera.pitch = Rad(SAFE_FRAC_PI_2);
-        }
         // Set position
         let look_direction = Vector3::new(
             camera.yaw.0.sin(),
@@ -154,32 +156,7 @@ impl FollowCameraController {
     }
 }
 
-fn yaw_and_pitch_from_vector(v: cgmath::Vector3<f32>) -> (Rad<f32>, Rad<f32>) {
-    let y = Vector3::unit_y();
-    let z = Vector3::unit_z();
-
-    let v_xy = Vector3::new(v.x, v.y, 0.0).normalize();
-    if v_xy == Vector3::zero() {
-        if v.dot(z) > 0.0 {
-            return (Rad(0.0), Rad(FRAC_PI_2));
-        } else {
-            return (Rad(0.0), Rad(-FRAC_PI_2));
-        }
-    }
-
-    let mut yaw = v_xy.angle(y);
-    if v.x < 0.0 {
-        yaw *= -1.0;
-    }
-
-    let mut pitch = v_xy.angle(v);
-    if v.z < 0.0 {
-        pitch *= -1.0;
-    }
-
-    (yaw, pitch)
-}
-
+#[allow(unused)]
 #[derive(Debug)]
 pub struct CameraController {
     pub(crate) mouse_pressed: bool,
@@ -197,6 +174,7 @@ pub struct CameraController {
     sensitivity: f32,
 }
 
+#[allow(unused)]
 impl CameraController {
     pub fn new(speed: f32, sensitivity: f32) -> Self {
         Self {
