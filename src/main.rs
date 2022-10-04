@@ -48,8 +48,8 @@ async fn run() {
     let title = "Junk Souls";
     let window = winit::window::WindowBuilder::new()
         .with_title(title)
-        // .with_maximized(true)
-        .with_inner_size(PhysicalSize::new(1280, 720))
+        .with_maximized(true)
+        .with_min_inner_size(PhysicalSize::new(1280, 720))
         .build(&event_loop)
         .unwrap();
     window.set_cursor_visible(false);

@@ -90,7 +90,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         i++;
     }
     // Ambient light
-    let ambient_strength = 0.005;
+    let ambient_strength = 0.0025;
     let ambient_color = vec3(1.0, 1.0, 1.0) * ambient_strength;
 
     let result = (ambient_color + diffuse_color + specular_color) * object_color.xyz;
