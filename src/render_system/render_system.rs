@@ -263,7 +263,7 @@ impl State {
         let projection = camera::Projection::new(config.width, config.height, cgmath::Deg(45.0), 0.1, 100.0);
         let (camera_uniform, camera_buffer, camera_bind_group_layout, camera_bind_group) = Self::create_camera_data(&device, &camera, &projection);
 
-        let camera_controller = camera::FollowCameraController::new(1.0, 5.0, 0.75, -75.0, 10.0);
+        let camera_controller = camera::FollowCameraController::new(1.0, 6.0, 1.0, -75.0, 10.0);
 
         // Create light data ====================================================================================
         let (light_uniform, light_buffer, light_bind_group_layout, light_bind_group) = Self::create_light_data(&device);
@@ -497,7 +497,7 @@ impl State {
     }
 
     fn create_instances(device: &wgpu::Device) -> Vec<(u32, wgpu::Buffer)> {
-        const SPACING: f32 = 3.5;
+        const SPACING: f32 = 5.5;
         let tree_instances = (0..NUM_INSTANCES_PER_ROW)
             .flat_map(|y| {
                 (0..NUM_INSTANCES_PER_ROW).map(move |x| {
