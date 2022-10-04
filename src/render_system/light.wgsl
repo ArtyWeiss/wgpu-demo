@@ -27,7 +27,7 @@ struct VertexOutput {
 
 @vertex
 fn vs_main( model: VertexInput ) -> VertexOutput {
-    let scale = 0.15;
+    let scale = 0.05;
     var out: VertexOutput;
     let light_index = model.instance_id;
     out.clip_position = camera.view_proj * vec4<f32>(model.position * scale + lights.positions[light_index], 1.0);

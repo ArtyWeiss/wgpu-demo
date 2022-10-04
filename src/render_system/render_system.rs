@@ -448,7 +448,7 @@ impl State {
             positions: [[3.75, 0.0, 0.8, 0.0]; MAX_LIGHTS_COUNT],
             // positions: [[0.0, 0.0, 0.0, 0.0]; MAX_LIGHTS_COUNT],
             colors: [[0.0, 0.0, 0.0, 0.0]; MAX_LIGHTS_COUNT],
-            count: 3,
+            count: 4,
             _padding2: [0; 3],
         };
         let light_buffer = device.create_buffer_init(
@@ -639,17 +639,26 @@ impl State {
         let old_position: cgmath::Vector4<_> = self.light_uniform.positions[0].into();
         let new_position: cgmath::Vector3<_> = (cgmath::Quaternion::from_axis_angle((0.0, 0.0, 1.0).into(), cgmath::Deg(60.0 * dt.as_secs_f32())) * old_position.xyz()).into();
         self.light_uniform.positions[0] = [new_position.x, new_position.y, new_position.z, 0.0];
-        self.light_uniform.colors[0] = [0.05, 1.0, 0.05, 8.0];
+        self.light_uniform.colors[0] = [0.05, 1.0, 0.05, 4.0];
 
         let old_position: cgmath::Vector4<_> = self.light_uniform.positions[1].into();
         let new_position: cgmath::Vector3<_> = (cgmath::Quaternion::from_axis_angle((0.0, 0.0, 1.0).into(), cgmath::Deg(30.0 * dt.as_secs_f32())) * old_position.xyz()).into();
         self.light_uniform.positions[1] = [new_position.x, new_position.y, new_position.z, 0.0];
-        self.light_uniform.colors[1] = [1.0, 0.05, 0.05, 8.0];
+        self.light_uniform.colors[1] = [1.0, 0.05, 0.05, 4.0];
 
         let old_position: cgmath::Vector4<_> = self.light_uniform.positions[2].into();
         let new_position: cgmath::Vector3<_> = (cgmath::Quaternion::from_axis_angle((0.0, 0.0, 1.0).into(), cgmath::Deg(15.0 * dt.as_secs_f32())) * old_position.xyz()).into();
         self.light_uniform.positions[2] = [new_position.x, new_position.y, new_position.z, 0.0];
-        self.light_uniform.colors[2] = [0.05, 0.05, 1.0, 8.0];
+        self.light_uniform.colors[2] = [0.05, 0.05, 1.0, 4.0];
+
+        // Fairy light
+        let fairy_position: cgmath::Vector4<_> = self.light_uniform.positions[3].into();
+        let mut target_position = (character_head + Vector3::new(1.0, -0.35, 1.25)).to_vec();
+        target_position = fairy_position.xyz().lerp(target_position, 1.5 * dt.as_secs_f32());
+
+        self.light_uniform.positions[3] = [target_position.x, target_position.y, target_position.z, 0.0];
+        self.light_uniform.colors[3] = [0.0, 0.8, 1.0, 1.0];
+
         self.queue.write_buffer(&self.light_buffer, 0, bytemuck::cast_slice(&[self.light_uniform]));
     }
 
