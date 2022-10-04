@@ -250,7 +250,7 @@ impl State {
         ).await.unwrap();
         // Load character and create uniform ====================================================================
         let character_model = resources::load_model(
-            "cylinder.obj",
+            "shierke.obj",
             &device,
             &queue,
             &texture_bind_group_layout,

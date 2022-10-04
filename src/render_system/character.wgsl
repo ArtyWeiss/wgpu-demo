@@ -38,6 +38,7 @@ struct VertexOutput {
 fn vs_main(vertex: VertexInput) -> VertexOutput {
     var out: VertexOutput;
     out.tex_coords = vertex.tex_coords;
+    out.tex_coords.y = 1.0 - out.tex_coords.y;
     out.world_normal = /*normal_matrix * */vertex.normal;
     var world_position: vec4<f32> = model.model * vec4<f32>(vertex.position, 1.0);
     out.world_position = world_position.xyz;
