@@ -1,6 +1,6 @@
 use instant::Duration;
 use cgmath;
-use cgmath::{Angle, InnerSpace};
+use cgmath::{Angle, InnerSpace, Quaternion, Rotation3, Vector3};
 use winit::event::*;
 
 use crate::render_system::Camera;
@@ -10,15 +10,17 @@ pub struct Character {
     pub head_height: f32,
     pub direction: cgmath::Vector3<f32>,
     pub speed: f32,
+    pub rotation_speed: f32,
 }
 
 impl Character {
-    pub fn new(head_height: f32, speed: f32) -> Self {
+    pub fn new(head_height: f32, speed: f32, rotation_speed: f32) -> Self {
         Self {
             position: cgmath::Point3 { x: 0.0, y: 0.0, z: 0.0 },
             head_height,
             direction: cgmath::Vector3::unit_y(),
             speed,
+            rotation_speed,
         }
     }
 }
@@ -70,10 +72,22 @@ impl CharacterController {
         let dt = dt.as_secs_f32();
         let movement_forward = forward * (self.amount_forward - self.amount_backward);
         let movement_right = right * (self.amount_right - self.amount_left);
-        if movement_right.magnitude() > 0.0 && movement_forward.magnitude() > 0.0 {
-            character.position += (movement_forward + movement_right).normalize() * character.speed * dt;
-        } else {
-            character.position += (movement_forward + movement_right) * character.speed * dt;
+        if movement_right.magnitude() > 0.0 || movement_forward.magnitude() > 0.0 {
+            let movement_vector = (movement_forward + movement_right).normalize();
+            character.position += movement_vector * character.speed * dt;
+
+            let cross = Vector3::unit_z().cross(character.direction);
+            let dot = cross.dot(movement_vector);
+
+            let mut angle = Vector3::angle(movement_vector, character.direction);
+            if dot < 0.0 {
+                angle *= -1.0;
+            }
+            let rotation = Quaternion::from_axis_angle(
+                Vector3::unit_z(),
+                cgmath::Deg::from(angle * character.rotation_speed * dt),
+            );
+            character.direction = rotation * character.direction;
         }
     }
 }

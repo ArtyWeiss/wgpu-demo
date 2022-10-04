@@ -1,5 +1,5 @@
 use std::iter;
-use cgmath::Point3;
+use cgmath::{Point3, Quaternion, Vector3};
 
 use cgmath::prelude::*;
 use instant;
@@ -30,8 +30,14 @@ impl CharacterUniform {
             model: cgmath::Matrix4::identity().into(),
         }
     }
-    fn update_matrix(&mut self, position: cgmath::Point3<f32>) {
-        self.model = cgmath::Matrix4::from_translation(position.to_vec()).into();
+    fn update_matrix(&mut self, position: cgmath::Point3<f32>, direction: cgmath::Vector3<f32>) {
+        let mut angle = Vector3::angle(direction, Vector3::unit_y());
+        if direction.x > 0.0 {
+            angle *= -1.0;
+        }
+        let rotation = Quaternion::from_axis_angle(Vector3::unit_z(), cgmath::Deg::from(angle));
+        let transform = cgmath::Matrix4::from_translation(position.to_vec()) * cgmath::Matrix4::from(rotation);
+        self.model = transform.into();
     }
 }
 
@@ -623,7 +629,7 @@ impl State {
             bytemuck::cast_slice(&[self.camera_uniform]),
         );
 
-        self.character_uniform.update_matrix(game_state.character.position.clone());
+        self.character_uniform.update_matrix(game_state.character.position.clone(), game_state.character.direction.clone());
         self.queue.write_buffer(
             &self.character_buffer,
             0,

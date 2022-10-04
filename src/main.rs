@@ -15,7 +15,7 @@ pub struct GameState {
 impl GameState {
     fn new() -> Self {
         Self {
-            character: character_system::Character::new(1.5 ,2.5),
+            character: character_system::Character::new(1.5 ,2.5, 10.0),
             character_controller: character_system::CharacterController::new(),
         }
     }

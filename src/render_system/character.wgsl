@@ -39,7 +39,8 @@ fn vs_main(vertex: VertexInput) -> VertexOutput {
     var out: VertexOutput;
     out.tex_coords = vertex.tex_coords;
     out.tex_coords.y = 1.0 - out.tex_coords.y;
-    out.world_normal = /*normal_matrix * */vertex.normal;
+    var world_normal = model.model * vec4<f32>(vertex.normal, 0.0);
+    out.world_normal = world_normal.xyz;
     var world_position: vec4<f32> = model.model * vec4<f32>(vertex.position, 1.0);
     out.world_position = world_position.xyz;
     out.clip_position = camera.view_proj * world_position;
@@ -77,7 +78,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
         i++;
     }
     // Ambient light
-    let ambient_strength = 0.025;
+    let ambient_strength = 0.01;
     let ambient_color = vec3(1.0, 1.0, 1.0) * ambient_strength;
 
     let result = (ambient_color + diffuse_color + specular_color) * object_color.xyz;
