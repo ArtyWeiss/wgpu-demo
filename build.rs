@@ -10,8 +10,9 @@ fn main() -> Result<()> {
     copy_options.overwrite = true;
     let paths_to_copy = vec!["res/"];
 
-    let out_dir = env::var("OUT_DIR")?;
-    copy_items(&paths_to_copy, out_dir, &copy_options)?;
-
+    let out_path = std::path::Path::new("target")
+        .join(env::var("PROFILE")?);
+    copy_items(&paths_to_copy, &out_path, &copy_options)?;
+    println!("Resources copied to {}", out_path.display());
     Ok(())
 }

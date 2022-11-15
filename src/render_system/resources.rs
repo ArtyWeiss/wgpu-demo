@@ -5,20 +5,18 @@ use wgpu::util::DeviceExt;
 use crate::render_system::{model, texture};
 
 pub async fn load_string(file_name: &str) -> anyhow::Result<String> {
-    let path = std::path::Path::new(env!("OUT_DIR"))
-        .join("res")
+    let path = std::path::Path::new("res")
         .join(file_name);
-    let txt = std::fs::read_to_string(path)?;
-
+    let txt = std::fs::read_to_string(&path)?;
+    println!("Load string {}", &path.display());
     Ok(txt)
 }
 
 pub async fn load_binary(file_name: &str) -> anyhow::Result<Vec<u8>> {
-    let path = std::path::Path::new(env!("OUT_DIR"))
-        .join("res")
+    let path = std::path::Path::new("res")
         .join(file_name);
-    let data = std::fs::read(path)?;
-
+    let data = std::fs::read(&path)?;
+    println!("Load binary {}", &path.display());
     Ok(data)
 }
 
