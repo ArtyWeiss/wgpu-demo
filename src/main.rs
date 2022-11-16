@@ -1,10 +1,10 @@
 mod render_system;
 mod character_system;
 
-use winit::{
-    event::*,
-    event_loop::{ControlFlow, EventLoop},
-};
+use winit::event::{VirtualKeyCode, KeyboardInput, ElementState};
+use winit::event::*;
+use winit::event_loop::{ControlFlow, EventLoop};
+
 use winit::dpi::PhysicalSize;
 
 pub struct GameState {
@@ -48,6 +48,7 @@ async fn run() {
     let title = "Junk Souls";
     let window = winit::window::WindowBuilder::new()
         .with_title(title)
+        .with_decorations(true)
         .with_maximized(true)
         .with_min_inner_size(PhysicalSize::new(1280, 720))
         .build(&event_loop)
@@ -59,6 +60,7 @@ async fn run() {
     let mut last_render_time = instant::Instant::now();
 
     event_loop.run(move |event, _, control_flow| {
+        state.platform.handle_event(&event);
         *control_flow = ControlFlow::Poll;
         match event {
             Event::MainEventsCleared => window.request_redraw(),
@@ -98,7 +100,10 @@ async fn run() {
                 last_render_time = now;
                 game_state.character_controller.update_character(&mut game_state.character, &state.camera, dt);
                 state.update(&game_state, dt);
-                match state.render() {
+
+                state.platform.update_time(now.elapsed().as_secs_f64());
+
+                match state.render(&window, dt.as_secs_f32()) {
                     Ok(_) => {}
                     Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => state.resize(state.size),
                     Err(wgpu::SurfaceError::OutOfMemory) => *control_flow = ControlFlow::Exit,

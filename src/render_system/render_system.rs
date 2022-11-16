@@ -8,6 +8,9 @@ use winit::window::Window;
 
 use model::{DrawLight, DrawModel, Vertex};
 
+use ::egui::FontDefinitions;
+use egui_winit_platform::{Platform, PlatformDescriptor};
+
 use crate::GameState;
 
 use crate::render_system::texture;
@@ -15,8 +18,10 @@ use crate::render_system::camera;
 use crate::render_system::resources;
 use crate::render_system::model;
 
+
 const NUM_INSTANCES_PER_ROW: u32 = 4;
 const MAX_LIGHTS_COUNT: usize = 32;
+
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
@@ -177,6 +182,9 @@ pub struct State {
     light_source_model: model::Model,
     instances_data: Vec<(u32, wgpu::Buffer)>,
     render_pipeline: wgpu::RenderPipeline,
+
+    pub(crate) platform: Platform,
+    egui_render_pass: egui_wgpu_backend::RenderPass,
 }
 
 impl State {
@@ -211,16 +219,27 @@ impl State {
             .await
             .unwrap();
         log::warn!("Surface");
-        let config = wgpu::SurfaceConfiguration {
+        let surface_format = surface.get_supported_formats(&adapter)[0];
+        let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format: surface.get_supported_formats(&adapter)[0],
-            width: size.width,
-            height: size.height,
+            format: surface_format,
+            width: size.width as u32,
+            height: size.height as u32,
             present_mode: wgpu::PresentMode::Fifo,
         };
-        surface.configure(&device, &config);
+        surface.configure(&device, &surface_config);
 
-        let depth_texture = texture::Texture::create_depth_texture(&device, &config, "depth_texture");
+        let depth_texture = texture::Texture::create_depth_texture(&device, &surface_config, "depth_texture");
+
+        // EGUI configuration ===================================================================================
+        let platform = Platform::new(PlatformDescriptor {
+            physical_width: size.width as u32,
+            physical_height: size.height as u32,
+            scale_factor: window.scale_factor(),
+            font_definitions: FontDefinitions::default(),
+            style: Default::default(),
+        });
+        let egui_render_pass = egui_wgpu_backend::RenderPass::new(&device, surface_format, 1);
 
         // Load assets and create instances =======================================================================
         let texture_bind_group_layout =
@@ -266,7 +285,7 @@ impl State {
         // Create camera and camera data ========================================================================
         let camera_position = Point3::new(0.0, 0.0, 0.0);
         let camera = camera::Camera::new(camera_position, cgmath::Rad(0.0), cgmath::Rad(0.0));
-        let projection = camera::Projection::new(config.width, config.height, cgmath::Deg(45.0), 0.1, 100.0);
+        let projection = camera::Projection::new(surface_config.width, surface_config.height, cgmath::Deg(45.0), 0.1, 100.0);
         let (camera_uniform, camera_buffer, camera_bind_group_layout, camera_bind_group) = Self::create_camera_data(&device, &camera, &projection);
 
         let camera_controller = camera::FollowCameraController::new(1.0, 6.0, 1.0, -75.0, 10.0);
@@ -292,7 +311,7 @@ impl State {
             Self::create_render_pipeline(
                 &device,
                 &layout,
-                config.format,
+                surface_config.format,
                 Some(texture::Texture::DEPTH_FORMAT),
                 &[model::ModelVertex::desc(), InstanceRaw::desc()],
                 shader,
@@ -315,7 +334,7 @@ impl State {
             Self::create_render_pipeline(
                 &device,
                 &layout,
-                config.format,
+                surface_config.format,
                 Some(texture::Texture::DEPTH_FORMAT),
                 &[model::ModelVertex::desc()],
                 shader,
@@ -340,7 +359,7 @@ impl State {
             Self::create_render_pipeline(
                 &device,
                 &layout,
-                config.format,
+                surface_config.format,
                 Some(texture::Texture::DEPTH_FORMAT),
                 &[model::ModelVertex::desc()],
                 shader,
@@ -351,7 +370,7 @@ impl State {
             surface,
             device,
             queue,
-            config,
+            config: surface_config,
             camera,
             projection,
             camera_controller,
@@ -373,6 +392,8 @@ impl State {
             character_bind_group,
             character_render_pipeline,
             character_model,
+            platform,
+            egui_render_pass,
         }
     }
 
@@ -662,7 +683,7 @@ impl State {
         self.queue.write_buffer(&self.light_buffer, 0, bytemuck::cast_slice(&[self.light_uniform]));
     }
 
-    pub(crate) fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+    pub(crate) fn render(&mut self, window: &Window, dt: f32) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
         let view = output
             .texture
@@ -718,10 +739,50 @@ impl State {
             render_pass.set_pipeline(&self.character_render_pipeline);
             render_pass.draw_character(&self.character_model, &self.camera_bind_group, &self.light_bind_group, &self.character_bind_group);
         }
+        {
+            // GUI draw ==========================================================================================
+            self.platform.begin_frame();
 
+            State::info_panel(&self.platform.context(), dt);
+
+            let full_output = self.platform.end_frame(Some(&window));
+            let paint_jobs = self.platform.context().tessellate(full_output.shapes);
+
+            // Upload all resources for the GPU.
+            let screen_descriptor = egui_wgpu_backend::ScreenDescriptor {
+                physical_width: self.config.width,
+                physical_height: self.config.height,
+                scale_factor: window.scale_factor() as f32,
+            };
+            let tdelta: egui::TexturesDelta = full_output.textures_delta;
+            self.egui_render_pass
+                .add_textures(&self.device, &self.queue, &tdelta)
+                .expect("add texture ok");
+            self.egui_render_pass.update_buffers(&self.device, &self.queue, &paint_jobs, &screen_descriptor);
+
+            // Record all render passes.
+            self.egui_render_pass.execute(&mut encoder, &view, &paint_jobs, &screen_descriptor, None).unwrap();
+            self.egui_render_pass.remove_textures(tdelta).expect("remove textures ok");
+        }
+
+        // Submit queue ========================================================================================
         self.queue.submit(iter::once(encoder.finish()));
         output.present();
 
         Ok(())
+    }
+
+    fn info_panel(context: &egui::Context, dt: f32) {
+        egui::TopBottomPanel::top("info_panel").show(context, |ui| {
+            ui.horizontal(|ui| {
+                ui.label("Frame time: ");
+                ui.label(format!("{0:.3}", dt));
+                ui.label("ms");
+                ui.add_space(100.0);
+                ui.label("Frame rate: ");
+                let frame_rate = 1.0 / dt;
+                ui.label(frame_rate.round().to_string());
+            });
+        });
     }
 }
