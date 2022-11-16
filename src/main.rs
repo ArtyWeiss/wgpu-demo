@@ -103,7 +103,7 @@ async fn run() {
 
                 state.platform.update_time(now.elapsed().as_secs_f64());
 
-                match state.render(&window, dt.as_secs_f32()) {
+                match state.render(&window) {
                     Ok(_) => {}
                     Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => state.resize(state.size),
                     Err(wgpu::SurfaceError::OutOfMemory) => *control_flow = ControlFlow::Exit,

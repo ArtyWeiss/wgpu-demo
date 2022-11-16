@@ -13,7 +13,7 @@ use egui_winit_platform::{Platform, PlatformDescriptor};
 
 use crate::GameState;
 
-use crate::render_system::texture;
+use crate::render_system::{InfoPanel, texture};
 use crate::render_system::camera;
 use crate::render_system::resources;
 use crate::render_system::model;
@@ -21,7 +21,6 @@ use crate::render_system::model;
 
 const NUM_INSTANCES_PER_ROW: u32 = 4;
 const MAX_LIGHTS_COUNT: usize = 32;
-
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
@@ -185,6 +184,7 @@ pub struct State {
 
     pub(crate) platform: Platform,
     egui_render_pass: egui_wgpu_backend::RenderPass,
+    info_panel: InfoPanel
 }
 
 impl State {
@@ -240,6 +240,7 @@ impl State {
             style: Default::default(),
         });
         let egui_render_pass = egui_wgpu_backend::RenderPass::new(&device, surface_format, 1);
+        let info_panel = InfoPanel::default();
 
         // Load assets and create instances =======================================================================
         let texture_bind_group_layout =
@@ -394,6 +395,7 @@ impl State {
             character_model,
             platform,
             egui_render_pass,
+            info_panel
         }
     }
 
@@ -681,9 +683,11 @@ impl State {
         self.light_uniform.colors[3] = [0.0, 0.8, 1.0, 1.0];
 
         self.queue.write_buffer(&self.light_buffer, 0, bytemuck::cast_slice(&[self.light_uniform]));
+
+        self.info_panel.update_frame_time(dt.as_secs_f32());
     }
 
-    pub(crate) fn render(&mut self, window: &Window, dt: f32) -> Result<(), wgpu::SurfaceError> {
+    pub(crate) fn render(&mut self, window: &Window) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
         let view = output
             .texture
@@ -742,9 +746,7 @@ impl State {
         {
             // GUI draw ==========================================================================================
             self.platform.begin_frame();
-
-            State::info_panel(&self.platform.context(), dt);
-
+            self.info_panel.draw(&self.platform.context());
             let full_output = self.platform.end_frame(Some(&window));
             let paint_jobs = self.platform.context().tessellate(full_output.shapes);
 
@@ -770,19 +772,5 @@ impl State {
         output.present();
 
         Ok(())
-    }
-
-    fn info_panel(context: &egui::Context, dt: f32) {
-        egui::TopBottomPanel::top("info_panel").show(context, |ui| {
-            ui.horizontal(|ui| {
-                ui.label("Frame time: ");
-                ui.label(format!("{0:.3}", dt));
-                ui.label("ms");
-                ui.add_space(100.0);
-                ui.label("Frame rate: ");
-                let frame_rate = 1.0 / dt;
-                ui.label(frame_rate.round().to_string());
-            });
-        });
     }
 }
