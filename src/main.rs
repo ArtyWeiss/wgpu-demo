@@ -93,11 +93,8 @@ async fn run() {
                         } else {
                             window.set_fullscreen(None)
                         },
-                        VirtualKeyCode::H => window.set_cursor_visible(false),
-                        VirtualKeyCode::LAlt => match virtual_code {
-                            VirtualKeyCode::H => window.set_cursor_visible(true),
-                            _ => (),
-                        },
+                        VirtualKeyCode::H => state.cursor_visible = false,
+                        VirtualKeyCode::V => state.cursor_visible = true,
                         _ => (),
                     }
                     WindowEvent::Resized(physical_size) => {

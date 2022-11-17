@@ -9,6 +9,7 @@ use winit::window::Window;
 use model::{DrawLight, DrawModel, Vertex};
 
 use ::egui::FontDefinitions;
+use egui::CursorIcon;
 use egui_winit_platform::{Platform, PlatformDescriptor};
 
 use crate::GameState;
@@ -184,7 +185,8 @@ pub struct State {
 
     pub(crate) platform: Platform,
     egui_render_pass: egui_wgpu_backend::RenderPass,
-    info_panel: InfoPanel
+    info_panel: InfoPanel,
+    pub(crate) cursor_visible: bool
 }
 
 impl State {
@@ -395,7 +397,8 @@ impl State {
             character_model,
             platform,
             egui_render_pass,
-            info_panel
+            info_panel,
+            cursor_visible: true
         }
     }
 
@@ -747,6 +750,13 @@ impl State {
             // GUI draw ==========================================================================================
             self.platform.begin_frame();
             self.info_panel.draw(&self.platform.context());
+
+            if self.cursor_visible {
+                self.platform.context().output().cursor_icon = CursorIcon::Default;
+            } else {
+                self.platform.context().output().cursor_icon = CursorIcon::None;
+            }
+
             let full_output = self.platform.end_frame(Some(&window));
             let paint_jobs = self.platform.context().tessellate(full_output.shapes);
 
