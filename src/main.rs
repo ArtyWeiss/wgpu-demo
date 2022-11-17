@@ -78,7 +78,16 @@ async fn run() {
                 window_id,
             } if window_id == window.id() && !game_state.input(event) => {
                 match event {
-                    WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                    WindowEvent::CloseRequested
+                    | WindowEvent::KeyboardInput {
+                        input:
+                        KeyboardInput {
+                            state: ElementState::Pressed,
+                            virtual_keycode: Some(VirtualKeyCode::Escape),
+                            ..
+                        },
+                        ..
+                    } => *control_flow = ControlFlow::Exit,
                     WindowEvent::KeyboardInput {
                         input: KeyboardInput {
                             virtual_keycode: Some(virtual_code),
@@ -93,8 +102,7 @@ async fn run() {
                         } else {
                             window.set_fullscreen(None)
                         },
-                        VirtualKeyCode::H => state.cursor_visible = false,
-                        VirtualKeyCode::V => state.cursor_visible = true,
+                        VirtualKeyCode::H => state.cursor_visible = !state.cursor_visible,
                         _ => (),
                     }
                     WindowEvent::Resized(physical_size) => {

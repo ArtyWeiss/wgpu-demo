@@ -38,13 +38,27 @@ impl InfoPanel {
                 ui.set_height(48.0);
                 self.image.show_size(ui, Vec2::new(32.0, 32.0));
                 ui.add_space(20.0);
-                ui.label("Frame time: ");
-                ui.label(format!("{0:.2}", self.average_frame_time));
-                ui.label("ms");
+                ui.vertical(|ui|{
+                    ui.add_space(5.0);
+                    ui.horizontal(|ui| {
+                        ui.label("Frame time:");
+                        ui.label(format!("{0:.2}", self.average_frame_time));
+                        ui.label("ms");
+                    });
+                    ui.horizontal(|ui|{
+                        ui.label("Frame rate:");
+                        let frame_rate = 1000.0 / self.average_frame_time;
+                        ui.label(frame_rate.round().to_string());
+                    });
+                });
                 ui.add_space(20.0);
-                ui.label("Frame rate: ");
-                let frame_rate = 1000.0 / self.average_frame_time;
-                ui.label(frame_rate.round().to_string());
+                ui.label("WASD - Перемещение");
+                ui.add_space(10.0);
+                ui.label("F - Полноэкранный режим");
+                ui.add_space(10.0);
+                ui.label("H - Видимость курсора");
+                ui.add_space(10.0);
+                ui.label("ESC - Закрыть приложение");
             });
         });
     }
