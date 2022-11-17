@@ -6,6 +6,7 @@ use winit::event::*;
 use winit::event_loop::{ControlFlow, EventLoop};
 
 use winit::dpi::PhysicalSize;
+use winit::window::Fullscreen;
 
 pub struct GameState {
     pub character: character_system::Character,
@@ -15,7 +16,7 @@ pub struct GameState {
 impl GameState {
     fn new() -> Self {
         Self {
-            character: character_system::Character::new(1.5 ,2.5, 10.0),
+            character: character_system::Character::new(1.5, 2.5, 10.0),
             character_controller: character_system::CharacterController::new(),
         }
     }
@@ -31,7 +32,7 @@ impl GameState {
                 ..
             } => {
                 self.character_controller.process_keyboard(*key, *state)
-            },
+            }
             _ => false,
         }
     }
@@ -48,12 +49,14 @@ async fn run() {
     let title = "Junk Souls";
     let window = winit::window::WindowBuilder::new()
         .with_title(title)
-        .with_decorations(true)
-        .with_maximized(true)
         .with_min_inner_size(PhysicalSize::new(1280, 720))
         .build(&event_loop)
         .unwrap();
-    window.set_cursor_visible(false);
+
+    let monitor = event_loop
+        .available_monitors()
+        .next()
+        .expect("no monitor found!");
 
     let mut game_state = GameState::new();
     let mut state = render_system::State::new(&window).await;
@@ -75,16 +78,28 @@ async fn run() {
                 window_id,
             } if window_id == window.id() && !game_state.input(event) => {
                 match event {
-                    WindowEvent::CloseRequested
-                    | WindowEvent::KeyboardInput {
-                        input:
-                        KeyboardInput {
+                    WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                    WindowEvent::KeyboardInput {
+                        input: KeyboardInput {
+                            virtual_keycode: Some(virtual_code),
                             state: ElementState::Pressed,
-                            virtual_keycode: Some(VirtualKeyCode::Escape),
                             ..
                         },
                         ..
-                    } => *control_flow = ControlFlow::Exit,
+                    } => match virtual_code {
+                        VirtualKeyCode::F => if window.fullscreen().is_none() {
+                            let fullscreen = Some(Fullscreen::Borderless(Some(monitor.clone())));
+                            window.set_fullscreen(fullscreen)
+                        } else {
+                            window.set_fullscreen(None)
+                        },
+                        VirtualKeyCode::H => window.set_cursor_visible(false),
+                        VirtualKeyCode::LAlt => match virtual_code {
+                            VirtualKeyCode::H => window.set_cursor_visible(true),
+                            _ => (),
+                        },
+                        _ => (),
+                    }
                     WindowEvent::Resized(physical_size) => {
                         state.resize(*physical_size);
                     }
